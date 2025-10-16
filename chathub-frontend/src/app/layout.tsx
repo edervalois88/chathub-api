@@ -14,8 +14,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "ChatHub",
-  description: "The ChatHub real-time chat application",
+  title: 'Japifon ChatHub',
+  description:
+    'Bandeja omnicanal para equipos de soporte y ventas impulsada por Japifon.',
 };
 
 export default function RootLayout({
@@ -25,11 +26,11 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-<body>
+      <body
+        className={`${geistSans.variable} ${geistMono.variable} min-h-screen bg-slate-50 font-sans antialiased text-slate-900`}
+      >
         <AuthProvider>
-          <div className="flex h-screen bg-white">
-            {children}
-          </div>
+          <div className="flex min-h-screen flex-col">{children}</div>
         </AuthProvider>
       </body>
     </html>

@@ -1,9 +1,13 @@
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
+import Image from 'next/image';
 import { useAuth } from '@/context/AuthContext';
 import { useRouter } from 'next/navigation';
-import Image from 'next/image';
+
+const API_BASE_URL =
+  process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3000';
 
 export default function LoginPage() {
   const [username, setUsername] = useState('testuser'); // Default for easy testing
@@ -18,7 +22,7 @@ export default function LoginPage() {
     setError(null);
 
     try {
-      const response = await fetch('http://localhost:3000/auth/login', {
+      const response = await fetch(`${API_BASE_URL}/auth/login`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -32,7 +36,7 @@ export default function LoginPage() {
       }
 
       const data = await response.json();
-      setToken(data.access_token);
+      setToken(data.access_token, data.user);
       router.push('/'); // Redirige a la página principal
 
     } catch (err: any) {
@@ -41,41 +45,41 @@ export default function LoginPage() {
   };
 
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center p-24 bg-japifon-dark-blue">
-      <div className="w-full max-w-md p-8 space-y-6 bg-white rounded-lg shadow-xl">
+    <main className="flex min-h-screen flex-col items-center justify-center bg-gradient-to-br from-[#10276F] via-[#173DA6] to-[#E4007C] px-4 py-16">
+      <div className="w-full max-w-md rounded-3xl bg-white p-10 shadow-2xl">
         <div className="text-center">
           <Image src="/globe.svg" alt="Japifon Logo" width={48} height={48} className="mx-auto mb-4 text-japifon-blue" />
-          <h1 className="text-4xl font-bold text-japifon-dark-blue">Japifon</h1>
-          <p className="text-japifon-gray-mid">Welcome to ChatHub</p>
+          <h1 className="text-3xl font-bold text-[#10276F]">Japifon</h1>
+          <p className="text-sm text-slate-500">Accede a tu bandeja omnicanal</p>
         </div>
         <form className="space-y-6" onSubmit={handleLogin}>
           <div>
-            <label htmlFor="username" className="text-sm font-medium text-gray-700">Usuario</label>
+            <label htmlFor="username" className="text-sm font-medium text-slate-700">Usuario</label>
             <input
               id="username"
               name="username"
               type="text"
               required
-              className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-japifon-blue focus:border-japifon-blue"
+              className="mt-1 block w-full rounded-lg border border-slate-300 px-3 py-2 shadow-sm placeholder-slate-400 focus:border-[#255FED] focus:outline-none focus:ring-2 focus:ring-[#255FED]/40"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
             />
           </div>
           <div>
-            <label htmlFor="password" className="text-sm font-medium text-gray-700">Contraseña</label>
+            <label htmlFor="password" className="text-sm font-medium text-slate-700">Contraseña</label>
             <input
               id="password"
               name="password"
               type="password"
               required
-              className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-japifon-blue focus:border-japifon-blue"
+              className="mt-1 block w-full rounded-lg border border-slate-300 px-3 py-2 shadow-sm placeholder-slate-400 focus:border-[#255FED] focus:outline-none focus:ring-2 focus:ring-[#255FED]/40"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
             />
           </div>
 
           {error && (
-            <div className="text-sm text-red-600">
+            <div className="rounded-lg border border-red-300 bg-red-50 px-4 py-2 text-sm text-red-600">
               {error}
             </div>
           )}
@@ -83,12 +87,21 @@ export default function LoginPage() {
           <div>
             <button
               type="submit"
-              className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-japifon-blue hover:bg-japifon-dark-blue focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-japifon-blue"
+              className="w-full flex justify-center rounded-lg bg-gradient-to-r from-[#255FED] to-[#E4007C] px-4 py-2 text-sm font-semibold text-white shadow-md transition hover:opacity-95 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#255FED]"
             >
               Entrar
             </button>
           </div>
         </form>
+        <p className="mt-6 text-center text-sm text-slate-500">
+          ¿Aún no tienes cuenta?{' '}
+          <Link
+            href="/register"
+            className="font-semibold text-[#255FED] hover:text-[#10276F]"
+          >
+            Regístrate
+          </Link>
+        </p>
       </div>
     </main>
   );

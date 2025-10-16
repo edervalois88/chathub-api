@@ -18,8 +18,40 @@ export class Conversation {
   @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'Contact', required: true })
   contact: MongooseSchema.Types.ObjectId | Contact;
 
+  @Prop({
+    type: MongooseSchema.Types.ObjectId,
+    ref: 'Organization',
+    required: true,
+  })
+  organization: MongooseSchema.Types.ObjectId;
+
+  @Prop({
+    type: MongooseSchema.Types.ObjectId,
+    ref: 'User',
+  })
+  createdBy: MongooseSchema.Types.ObjectId;
+
+  @Prop({
+    type: [{ type: MongooseSchema.Types.ObjectId, ref: 'User' }],
+    default: [],
+  })
+  participants: MongooseSchema.Types.ObjectId[];
+
+  @Prop({
+    type: String,
+    enum: ['open', 'pending', 'resolved'],
+    default: 'open',
+  })
+  status: 'open' | 'pending' | 'resolved';
+
   @Prop({ type: [{ type: MongooseSchema.Types.ObjectId, ref: 'Message' }] })
   messages: MongooseSchema.Types.ObjectId[];
+
+  @Prop({ trim: true })
+  lastMessagePreview?: string;
+
+  @Prop({ default: Date.now })
+  lastActivityAt: Date;
 
   // You can add more fields here, like assigned agent, status, etc.
 }

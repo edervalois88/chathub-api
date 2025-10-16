@@ -15,8 +15,15 @@ export class Contact {
   email: string;
 
   // Assuming a multi-tenant setup where a contact belongs to a company
-  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'Company' }) // Assuming you have a Company model
-  company: MongooseSchema.Types.ObjectId;
+  @Prop({
+    type: MongooseSchema.Types.ObjectId,
+    ref: 'Organization',
+    required: true,
+  })
+  organization: MongooseSchema.Types.ObjectId;
+
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'User' })
+  createdBy: MongooseSchema.Types.ObjectId;
 }
 
 export const ContactSchema = SchemaFactory.createForClass(Contact);

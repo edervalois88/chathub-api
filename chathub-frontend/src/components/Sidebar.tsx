@@ -1,18 +1,19 @@
 'use client';
 
-import { useAuth } from '@/context/AuthContext';
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { useEffect, useState } from 'react';
+import { useAuth } from '@/context/AuthContext';
 
-interface IConversation {
+interface ConversationListItem {
   _id: string;
+  channel: string;
+  status: 'open' | 'pending' | 'resolved';
+  lastMessagePreview?: string;
+  lastActivityAt?: string;
   contact: {
     _id: string;
     name: string;
   };
-  lastMessage: string;
-  channel: string;
-  updatedAt: string;
 }
 
 interface SidebarProps {
@@ -20,11 +21,24 @@ interface SidebarProps {
   selectedRoomId: string | null;
 }
 
-export default function Sidebar({ onSelectConversation, selectedRoomId }: SidebarProps) {
-  const [conversations, setConversations] = useState<IConversation[]>([]);
-  const [error, setError] = useState<string | null>(null);
+const API_BASE_URL =
+  process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3000';
+
+export default function Sidebar({
+  onSelectConversation,
+  selectedRoomId,
+}: SidebarProps) {
+  const { token, user, logout } = useAuth();
+  const [conversations, setConversations] = useState<ConversationListItem[]>(
+    [],
+  );
   const [loading, setLoading] = useState(true);
-  const { token } = useAuth();
+  const [error, setError] = useState<string | null>(null);
+
+  const organizationName = useMemo(
+    () => user?.organization?.name ?? 'Japifon',
+    [user?.organization?.name],
+  );
 
   useEffect(() => {
     if (!token) {
@@ -32,73 +46,184 @@ export default function Sidebar({ onSelectConversation, selectedRoomId }: Sideba
       return;
     }
 
+    let unsubscribe = false;
+
     const fetchConversations = async () => {
       setLoading(true);
       try {
-        const response = await fetch('http://localhost:3000/chat/conversations', {
-          headers: { 'Authorization': `Bearer ${token}` },
+        const response = await fetch(`${API_BASE_URL}/chat/conversations`, {
+          headers: { Authorization: `Bearer ${token}` },
         });
-        if (!response.ok) throw new Error('Failed to fetch conversations');
+        if (!response.ok) {
+          throw new Error('No fue posible cargar las conversaciones');
+        }
         const data = await response.json();
-        const formattedData = data.map((conv: any) => ({
-          ...conv,
-          lastMessage: conv.lastMessage || 'No messages yet...',
-        })).sort((a: IConversation, b: IConversation) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
-        setConversations(formattedData);
-      } catch (err: any) { 
-        setError(err.message); 
+
+        if (!unsubscribe) {
+          setConversations(data);
+          setError(null);
+        }
+      } catch (err) {
+        if (!unsubscribe) {
+          setError((err as Error).message);
+        }
       } finally {
-        setLoading(false);
+        if (!unsubscribe) {
+          setLoading(false);
+        }
       }
     };
 
     fetchConversations();
+    const intervalId = setInterval(fetchConversations, 30_000);
+
+    return () => {
+      unsubscribe = true;
+      clearInterval(intervalId);
+    };
   }, [token]);
 
+  const emptyState = (
+    <div className="p-6 text-center text-sm text-slate-500">
+      <p className="mb-3">Aun no tienes conversaciones activas.</p>
+      <Link
+        href="/conversations/create"
+        className="font-semibold text-[#255FED] hover:text-[#10276F]"
+      >
+        Crea la primera conversacion
+      </Link>
+    </div>
+  );
+
   return (
-    <div className="w-80 bg-japifon-gray-light border-r border-gray-200 flex flex-col">
-      <div className="p-4 border-b border-gray-200 flex justify-between items-center">
+    <aside className="flex w-80 flex-col border-r border-slate-100 bg-white/95 backdrop-blur">
+      <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
         <div>
-          <h1 className="text-2xl font-bold text-japifon-dark-blue">Japifon</h1>
-          <p className="text-sm text-japifon-gray-mid">ChatHub</p>
+          <h1 className="text-lg font-semibold text-[#10276F]">
+            {organizationName}
+          </h1>
+          <p className="text-xs uppercase tracking-wide text-slate-400">
+            Bandeja omnicanal
+          </p>
         </div>
-        <Link href="/conversations/create" className="p-2 rounded-full bg-japifon-blue text-white hover:bg-japifon-dark-blue" title="Start new conversation">
-          <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+        <Link
+          href="/conversations/create"
+          className="rounded-full bg-gradient-to-r from-[#255FED] to-[#E4007C] p-2 text-white shadow-md transition hover:opacity-90"
+          title="Crear conversación"
+        >
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            className="h-5 w-5"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <path d="M12 5v14M5 12h14" />
           </svg>
         </Link>
       </div>
+
       <div className="flex-1 overflow-y-auto">
-        {loading && <p className="p-4 text-center text-gray-500">Loading conversations...</p>}
-        {!loading && error && <p className="p-4 text-center text-red-500">Error: {error}</p>}
-        {!loading && !error && conversations.length === 0 && (
-          <div className="p-4 text-center text-gray-500">
-            <p className="mb-2">No conversations found.</p>
-            <Link href="/conversations/create" className="text-japifon-blue hover:underline font-semibold">
-              Create one to get started!
-            </Link>
-          </div>
+        {loading && (
+          <p className="px-4 py-6 text-center text-sm text-slate-500">
+            Cargando conversaciones...
+          </p>
         )}
+
+        {!loading && error && (
+          <p className="px-4 py-6 text-center text-sm text-red-500">{error}</p>
+        )}
+
+        {!loading && !error && conversations.length === 0 && emptyState}
+
         {!loading && !error && conversations.length > 0 && (
           <ul>
-            {conversations.map((conv) => (
-              <li 
-                key={conv._id}
-                className={`border-b border-gray-200 cursor-pointer ${selectedRoomId === conv._id ? 'bg-japifon-blue/10' : ''}`}
-                onClick={() => onSelectConversation(conv._id)}
-              >
-                <div className="block p-4 hover:bg-gray-50">
-                  <div className="flex justify-between">
-                    <span className="font-bold text-japifon-dark-blue">{conv.contact.name}</span>
-                    <span className="text-xs text-gray-500 capitalize">{conv.channel}</span>
-                  </div>
-                  <p className="text-sm text-gray-600 truncate">{conv.lastMessage}</p>
-                </div>
-              </li>
-            ))}
+            {conversations.map((conversation) => {
+              const isActive = conversation._id === selectedRoomId;
+              const lastActivity = conversation.lastActivityAt
+                ? new Date(conversation.lastActivityAt).toLocaleTimeString(
+                    [],
+                    {
+                      hour: '2-digit',
+                      minute: '2-digit',
+                    },
+                  )
+                : '';
+              const preview =
+                conversation.lastMessagePreview ??
+                'Sin mensajes registrados aún';
+
+              return (
+                <li key={conversation._id}>
+                  <button
+                    type="button"
+                    onClick={() => onSelectConversation(conversation._id)}
+                    className={`flex w-full flex-col gap-2 px-5 py-4 text-left transition ${
+                      isActive
+                        ? 'bg-gradient-to-r from-[#F3F6FF] to-[#FFE8F5]'
+                        : 'hover:bg-slate-50'
+                    }`}
+                  >
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <p className="text-sm font-semibold text-[#10276F]">
+                          {conversation.contact?.name ?? 'Contacto'}
+                        </p>
+                        <p className="text-xs uppercase tracking-wide text-slate-400">
+                          {conversation.channel}
+                        </p>
+                      </div>
+                      <span
+                        className={`rounded-full px-2 py-1 text-[10px] font-semibold uppercase ${
+                          conversation.status === 'resolved'
+                            ? 'bg-emerald-100 text-emerald-600'
+                            : conversation.status === 'pending'
+                            ? 'bg-amber-100 text-amber-600'
+                            : 'bg-[#E4007C1A] text-[#E4007C]'
+                        }`}
+                      >
+                        {conversation.status}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="line-clamp-2 text-xs text-slate-500">
+                        {preview}
+                      </p>
+                      <span className="text-[10px] uppercase tracking-wide text-slate-400">
+                        {lastActivity}
+                      </span>
+                    </div>
+                  </button>
+                </li>
+              );
+            })}
           </ul>
         )}
       </div>
-    </div>
+      {user && (
+        <div className="border-t border-slate-100 px-5 py-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-semibold text-[#10276F]">
+                {user.displayName}
+              </p>
+              <p className="text-xs uppercase tracking-wide text-slate-400">
+                {user.role}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={logout}
+              className="rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-slate-500 transition hover:border-[#E4007C] hover:text-[#E4007C]"
+            >
+              Salir
+            </button>
+          </div>
+        </div>
+      )}
+    </aside>
   );
 }

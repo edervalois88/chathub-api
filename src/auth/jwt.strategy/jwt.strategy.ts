@@ -1,11 +1,17 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy } from 'passport-jwt';
+import { InjectModel } from '@nestjs/mongoose';
+import { Model } from 'mongoose';
+import { User, UserDocument } from '../schemas/user.schema';
 
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
-  constructor(configService: ConfigService) {
+  constructor(
+    configService: ConfigService,
+    @InjectModel(User.name) private readonly userModel: Model<UserDocument>,
+  ) {
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
       ignoreExpiration: false,
@@ -14,8 +20,24 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   }
 
   async validate(payload: any) {
-    // Here you could add logic to look up the user in the database
-    // to ensure they still exist, etc.
-    return { userId: payload.sub, username: payload.username };
+    const user = await this.userModel
+      .findById(payload.sub)
+      .select('-password')
+      .populate('organization')
+      .lean();
+
+    if (!user) {
+      throw new UnauthorizedException('User no longer exists');
+    }
+
+    return {
+      _id: user._id.toString(),
+      username: user.username,
+      email: user.email,
+      displayName: user.displayName,
+      role: user.role,
+      avatarColor: user.avatarColor,
+      organization: user.organization,
+    };
   }
 }

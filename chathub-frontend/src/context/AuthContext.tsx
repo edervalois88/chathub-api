@@ -1,68 +1,122 @@
 'use client';
 
-import { createContext, useContext, useState, ReactNode, useEffect } from 'react';
+import {
+  createContext,
+  useContext,
+  useState,
+  ReactNode,
+  useEffect,
+  useCallback,
+} from 'react';
 
-// Define a user interface for type safety
-interface User {
+interface Organization {
+  _id: string;
+  name: string;
+  slug: string;
+  primaryColor?: string;
+  secondaryColor?: string;
+}
+
+interface AuthenticatedUser {
   _id: string;
   username: string;
-  // Add other user properties as needed
+  email: string;
+  displayName: string;
+  role: 'owner' | 'admin' | 'agent';
+  avatarColor?: string;
+  organization: Organization;
 }
 
 interface AuthContextType {
   token: string | null;
-  user: User | null;
-  setToken: (token: string | null) => void;
+  user: AuthenticatedUser | null;
+  setToken: (token: string | null, userPayload?: AuthenticatedUser | null) => void;
+  refreshProfile: () => Promise<void>;
+  logout: () => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+const API_BASE_URL =
+  process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3000';
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [token, setTokenState] = useState<string | null>(null);
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<AuthenticatedUser | null>(null);
 
-  const fetchProfile = async (currentToken: string) => {
-    try {
-      const response = await fetch('http://localhost:3000/auth/profile', {
-        headers: {
-          'Authorization': `Bearer ${currentToken}`,
-        },
-      });
-      if (response.ok) {
-        const userData = await response.json();
-        setUser(userData);
-      } else {
-        // If the token is invalid, clear it
-        setToken(null);
-      }
-    } catch (error) {
-      console.error('Failed to fetch profile', error);
-      setToken(null); // Clear token on error
+  const clearSession = useCallback(() => {
+    setTokenState(null);
+    setUser(null);
+    if (typeof localStorage !== 'undefined') {
+      localStorage.removeItem('authToken');
     }
-  };
+  }, []);
+
+  const fetchProfile = useCallback(
+    async (currentToken: string) => {
+      try {
+        const response = await fetch(`${API_BASE_URL}/auth/profile`, {
+          headers: {
+            Authorization: `Bearer ${currentToken}`,
+          },
+        });
+        if (!response.ok) {
+          clearSession();
+          return;
+        }
+        const userData: AuthenticatedUser = await response.json();
+        setUser(userData);
+      } catch (error) {
+        console.error('Failed to fetch profile', error);
+        clearSession();
+      }
+    },
+    [clearSession],
+  );
 
   useEffect(() => {
-    // On initial load, try to read the token from localStorage
+    if (typeof window === 'undefined') return;
     const storedToken = localStorage.getItem('authToken');
     if (storedToken) {
       setTokenState(storedToken);
       fetchProfile(storedToken);
     }
-  }, []);
+  }, [fetchProfile]);
 
-  const setToken = (newToken: string | null) => {
+  const setToken = (
+    newToken: string | null,
+    userPayload?: AuthenticatedUser | null,
+  ) => {
+    if (!newToken) {
+      clearSession();
+      return;
+    }
+
     setTokenState(newToken);
-    if (newToken) {
+    if (typeof localStorage !== 'undefined') {
       localStorage.setItem('authToken', newToken);
-      fetchProfile(newToken);
+    }
+
+    if (userPayload) {
+      setUser(userPayload);
     } else {
-      localStorage.removeItem('authToken');
-      setUser(null); // Clear user on logout
+      fetchProfile(newToken);
     }
   };
 
+  const refreshProfile = async () => {
+    if (!token) return;
+    await fetchProfile(token);
+  };
+
+  const logout = () => {
+    clearSession();
+  };
+
   return (
-    <AuthContext.Provider value={{ token, user, setToken }}>
+    <AuthContext.Provider
+      value={{ token, user, setToken, refreshProfile, logout }}
+    >
       {children}
     </AuthContext.Provider>
   );

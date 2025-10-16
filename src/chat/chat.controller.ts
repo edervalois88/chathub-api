@@ -1,4 +1,12 @@
-import { Controller, Get, Post, Body, UseGuards, Req, Param } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  UseGuards,
+  Req,
+  Param,
+} from '@nestjs/common';
 import { JwtGuard } from '../auth/jwt/jwt.guard';
 import { ChatService } from './chat.service';
 import { CreateConversationDto } from './dto/create-conversation.dto';
@@ -9,23 +17,45 @@ export class ChatController {
   constructor(private readonly chatService: ChatService) {}
 
   @Get('conversations')
-  async getConversations() {
-    return this.chatService.getConversations();
+  async getConversations(@Req() req) {
+    const organizationId =
+      req.user.organization?._id ?? req.user.organization?.toString();
+    return this.chatService.getConversations(organizationId);
   }
 
   @Post('conversations')
-  async createConversation(@Body() createConversationDto: CreateConversationDto) {
-    return this.chatService.createConversation(createConversationDto.channel, createConversationDto.contactId);
+  async createConversation(
+    @Req() req,
+    @Body() createConversationDto: CreateConversationDto,
+  ) {
+    const organizationId =
+      req.user.organization?._id ?? req.user.organization?.toString();
+    return this.chatService.createConversation(
+      createConversationDto.channel,
+      createConversationDto.contactId,
+      organizationId,
+      req.user._id,
+    );
   }
 
   @Get('conversations/:id')
-  async getConversationById(@Param('id') id: string) {
-    return this.chatService.getConversationById(id);
+  async getConversationById(@Req() req, @Param('id') id: string) {
+    const organizationId =
+      req.user.organization?._id ?? req.user.organization?.toString();
+    return this.chatService.getConversationById(id, organizationId);
   }
 
   @Get('conversations/:id/messages')
-  async getMessagesForConversation(@Param('id') conversationId: string) {
-    return this.chatService.getMessagesForConversation(conversationId);
+  async getMessagesForConversation(
+    @Req() req,
+    @Param('id') conversationId: string,
+  ) {
+    const organizationId =
+      req.user.organization?._id ?? req.user.organization?.toString();
+    return this.chatService.getMessagesForConversation(
+      conversationId,
+      organizationId,
+    );
   }
 
   @Post('conversations/:id/messages')
@@ -35,17 +65,35 @@ export class ChatController {
     @Req() req,
   ) {
     // Assuming outbound messages are sent by authenticated users (agents)
-    return this.chatService.createMessage(body.content, req.user, conversationId, 'outbound');
+    return this.chatService.createMessage(
+      body.content,
+      req.user,
+      conversationId,
+      'outbound',
+    );
   }
 
   @Get('contacts')
-  async getContacts() {
-    return this.chatService.getContacts();
+  async getContacts(@Req() req) {
+    const organizationId =
+      req.user.organization?._id ?? req.user.organization?.toString();
+    return this.chatService.getContacts(organizationId);
   }
 
   // You might also want an endpoint to create contacts
   @Post('contacts')
-  async createContact(@Body() body: { name: string, phone?: string, email?: string }) {
-    return this.chatService.createContact(body.name, body.phone, body.email);
+  async createContact(
+    @Req() req,
+    @Body() body: { name: string; phone?: string; email?: string },
+  ) {
+    const organizationId =
+      req.user.organization?._id ?? req.user.organization?.toString();
+    return this.chatService.createContact(
+      body.name,
+      organizationId,
+      req.user._id,
+      body.phone,
+      body.email,
+    );
   }
 }

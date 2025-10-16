@@ -1,4 +1,11 @@
-import { SubscribeMessage, WebSocketGateway, OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect, WebSocketServer } from '@nestjs/websockets';
+import {
+  SubscribeMessage,
+  WebSocketGateway,
+  OnGatewayInit,
+  OnGatewayConnection,
+  OnGatewayDisconnect,
+  WebSocketServer,
+} from '@nestjs/websockets';
 import { Server, WebSocket } from 'ws';
 import { Logger } from '@nestjs/common';
 import { AuthService } from '../auth/auth.service';
@@ -54,14 +61,37 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
   }
 
   @SubscribeMessage('joinConversation')
-  async handleJoinConversation(client: AuthenticatedSocket, conversationId: string): Promise<void> {
-    client.conversationId = conversationId;
-    const messages = await this.chatService.getMessagesForConversation(conversationId);
-    const history = {
-      event: 'messageHistory',
-      data: messages,
-    };
-    client.send(JSON.stringify(history));
+  async handleJoinConversation(
+    client: AuthenticatedSocket,
+    conversationId: string,
+  ): Promise<void> {
+    try {
+      const organizationId =
+        client.user?.organization?._id ?? client.user?.organization;
+      if (!organizationId) {
+        throw new Error('Organizacion no detectada en el contexto del usuario');
+      }
+      const messages = await this.chatService.getMessagesForConversation(
+        conversationId,
+        organizationId,
+      );
+      client.conversationId = conversationId;
+      const history = {
+        event: 'messageHistory',
+        data: messages,
+      };
+      client.send(JSON.stringify(history));
+    } catch (error) {
+      this.logger.error(
+        `Error al unirse a la conversacion: ${(error as Error).message}`,
+      );
+      client.send(
+        JSON.stringify({
+          event: 'error',
+          data: 'No se pudo acceder a la conversacion solicitada',
+        }),
+      );
+    }
   }
 
   @SubscribeMessage('leaveConversation')
@@ -70,20 +100,37 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
   }
 
   @SubscribeMessage('sendMessage')
-  async handleMessage(client: AuthenticatedSocket, payload: any): Promise<void> {
+  async handleMessage(
+    client: AuthenticatedSocket,
+    payload: any,
+  ): Promise<void> {
     const user = client.user;
     const conversationId = client.conversationId;
 
     if (user && conversationId) {
-      const savedMessage = await this.chatService.createMessage(payload.content, user, conversationId, 'outbound');
-      
+      const content =
+        typeof payload === 'string'
+          ? payload
+          : payload?.content ?? payload?.data ?? '';
+
+      if (!content) {
+        return;
+      }
+
+      const savedMessage = await this.chatService.createMessage(
+        content,
+        user,
+        conversationId,
+        'outbound',
+      );
+
       const message = {
         event: 'receiveMessage',
         data: savedMessage,
       };
 
       // Broadcast to all clients in the same conversation
-      this.server.clients.forEach(c => {
+      this.server.clients.forEach((c) => {
         const ac = c as AuthenticatedSocket;
         if (ac.readyState === WebSocket.OPEN && ac.conversationId === conversationId) {
           ac.send(JSON.stringify(message));

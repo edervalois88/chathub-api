@@ -1,4 +1,12 @@
-import { Controller, Post, Body, Get, UseGuards, Request } from '@nestjs/common';
+import {
+  Controller,
+  Post,
+  Body,
+  Get,
+  UseGuards,
+  Request,
+  Param,
+} from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { LoginUserDto } from './dto/login-user.dto';
@@ -22,6 +30,16 @@ export class AuthController {
   @Get('profile')
   getProfile(@Request() req) {
     return req.user;
+  }
+
+  @Get('organizations')
+  async listOrganizations() {
+    return this.authService.listOrganizations();
+  }
+
+  @Get('organizations/:slug')
+  async getOrganization(@Param('slug') slug: string) {
+    return this.authService.findOrganizationBySlug(slug);
   }
 
   @Get('login')
