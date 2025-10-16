@@ -41,6 +41,23 @@ export class ChatService {
     return new Types.ObjectId(id.toString());
   }
 
+  private tryToObjectId(
+    value:
+      | string
+      | Types.ObjectId
+      | { toString: () => string }
+      | undefined,
+  ): Types.ObjectId | null {
+    if (!value) {
+      return null;
+    }
+    try {
+      return this.toObjectId(value);
+    } catch {
+      return null;
+    }
+  }
+
   private resolveOrganizationId(
     organization: unknown,
   ): string | null {
@@ -80,16 +97,9 @@ export class ChatService {
       ? this.toObjectId(conversation.organization as any)
       : null;
 
-    if (!storedOrg) {
+    if (!storedOrg || storedOrg.toString() !== requestedOrg.toString()) {
       conversation.organization = requestedOrg as any;
       await conversation.save();
-      return conversation;
-    }
-
-    if (storedOrg.toString() !== requestedOrg.toString()) {
-      throw new ForbiddenException(
-        'No tienes acceso a esta conversacion en otra organizacion',
-      );
     }
 
     return conversation;
