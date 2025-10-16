@@ -18,8 +18,11 @@
     "skipLibCheck": true,
     "strictNullChecks": true,
     "forceConsistentCasingInFileNames": true,
+    "lib": ["es2023"],
     "noImplicitAny": false,
     "strictBindCallApply": false,
     "noFallthroughCasesInSwitch": false
-  }
+  },
+  "include": ["src", "test"],
+  "exclude": ["node_modules", "dist", "chathub-frontend"]
 }

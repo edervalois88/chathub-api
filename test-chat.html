@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>ChatHub WebSocket Test</title>
+    <style>
+        body { font-family: sans-serif; display: flex; flex-direction: column; max-width: 800px; margin: auto; padding: 20px; }
+        #logs { border: 1px solid #ccc; padding: 10px; height: 400px; overflow-y: scroll; margin-top: 10px; white-space: pre-wrap; background-color: #f9f9f9; }
+        .controls > * { margin-bottom: 10px; }
+        input { width: 100%; padding: 8px; box-sizing: border-box; }
+        button { padding: 10px 15px; cursor: pointer; }
+    </style>
+</head>
+<body>
+    <h1>ChatHub WebSocket Test</h1>
+
+    <div class="controls">
+        <label for="token">Auth Token (JWT):</label>
+        <input type="text" id="token" placeholder="Pega tu token JWT aquí">
+        <button id="connectBtn">Conectar</button>
+        <button id="disconnectBtn" disabled>Desconectar</button>
+    </div>
+
+    <hr>
+
+    <div class="controls">
+        <label for="message">Mensaje:</label>
+        <input type="text" id="message" placeholder="Escribe tu mensaje..." disabled>
+        <button id="sendBtn" disabled>Enviar</button>
+    </div>
+
+    <div id="logs"></div>
+
+    <script>
+        const tokenInput = document.getElementById('token');
+        const connectBtn = document.getElementById('connectBtn');
+        const disconnectBtn = document.getElementById('disconnectBtn');
+        const messageInput = document.getElementById('message');
+        const sendBtn = document.getElementById('sendBtn');
+        const logs = document.getElementById('logs');
+
+        let socket;
+
+        function log(message) {
+            const el = document.createElement('div');
+            el.innerHTML = `<div><strong>${new Date().toLocaleTimeString()}:</strong> ${message}</div>`;
+            logs.appendChild(el);
+            logs.scrollTop = logs.scrollHeight;
+        }
+
+        connectBtn.onclick = () => {
+            const token = tokenInput.value;
+            if (!token) {
+                log('ERROR: Por favor, introduce un token.');
+                return;
+            }
+
+            // Construimos la URL con el token como query parameter
+            const url = `ws://localhost:3000?token=${token}`;
+            socket = new WebSocket(url);
+
+            log(`INFO: Intentando conectar a ${url}`);
+
+            socket.onopen = () => {
+                log('INFO: Conexión abierta.');
+                connectBtn.disabled = true;
+                disconnectBtn.disabled = false;
+                messageInput.disabled = false;
+                sendBtn.disabled = false;
+            };
+
+            socket.onmessage = (event) => {
+                const messageFromServer = JSON.parse(event.data);
+
+                if (messageFromServer.event === 'receiveMessage') {
+                    log(`RECIBIDO: ${JSON.stringify(messageFromServer.data, null, 2)}`);
+                } else if (messageFromServer.event === 'messageHistory') {
+                    log('INFO: Recibiendo historial de mensajes...');
+                    messageFromServer.data.forEach(message => {
+                        const historyMessage = {
+                            content: message.content,
+                            author: message.sender.displayName,
+                            timestamp: message.createdAt,
+                        };
+                        log(`HISTORIAL: ${JSON.stringify(historyMessage, null, 2)}`);
+                    });
+                } else {
+                    log(`RECIBIDO (evento desconocido): ${event.data}`);
+                }
+            };
+
+            socket.onclose = (event) => {
+                let reason = event.reason || "Desconocido";
+                if(event.code === 1006){
+                    reason = "El servidor cerró la conexión (probablemente token inválido)";
+                }
+                log(`INFO: Conexión cerrada. Código: ${event.code}, Razón: ${reason}`);
+                connectBtn.disabled = false;
+                disconnectBtn.disabled = true;
+                messageInput.disabled = true;
+                sendBtn.disabled = true;
+            };
+
+            socket.onerror = (error) => {
+                log(`ERROR: Ocurrió un error en el WebSocket.`);
+            };
+        };
+
+        disconnectBtn.onclick = () => {
+            if (socket) {
+                socket.close();
+            }
+        };
+
+        sendBtn.onclick = () => {
+            const message = messageInput.value;
+            if (socket && message) {
+                // Para que NestJS reconozca el evento 'sendMessage',
+                // debemos enviar un objeto con 'event' y 'data'.
+                const wsMessage = {
+                    event: 'sendMessage',
+                    data: message
+                }
+                socket.send(JSON.stringify(wsMessage));
+                log(`ENVIADO: ${message}`);
+                messageInput.value = '';
+            }
+        };
+        
+        // Permite enviar con la tecla Enter
+        messageInput.addEventListener('keyup', (event) => {
+            if (event.key === 'Enter') {
+                sendBtn.click();
+            }
+        });
+
+    </script>
+</body>
+</html>

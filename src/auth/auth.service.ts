@@ -64,10 +64,13 @@ export class AuthService {
   async getUserFromAuthenticationToken(token: string): Promise<UserDocument> {
     try {
       const payload = this.jwtService.verify(token);
-      const userId = payload.sub;
-      return this.userModel.findById(userId);
+      const user = await this.userModel.findById(payload.sub);
+      if (!user) {
+        throw new UnauthorizedException('User not found');
+      }
+      return user;
     } catch (error) {
-      throw new UnauthorizedException('Invalid token');
+      throw new UnauthorizedException('Invalid or expired token');
     }
   }
 }
