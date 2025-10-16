@@ -4,7 +4,7 @@ import {
   ForbiddenException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model, Types, Schema as MongooseSchema } from 'mongoose';
+import { Model, Types } from 'mongoose';
 import { Message, MessageDocument } from './schemas/message.schema';
 import {
   Conversation,
@@ -30,7 +30,7 @@ export class ChatService {
   ) {}
 
   private toObjectId(
-    id: string | Types.ObjectId | MongooseSchema.Types.ObjectId,
+    id: string | Types.ObjectId | { toString: () => string },
   ): Types.ObjectId {
     if (id instanceof Types.ObjectId) {
       return id;
@@ -41,20 +41,85 @@ export class ChatService {
     return new Types.ObjectId(id.toString());
   }
 
+  private resolveOrganizationId(
+    organization: unknown,
+  ): string | null {
+    if (!organization) {
+      return null;
+    }
+    if (typeof organization === 'string') {
+      return organization;
+    }
+    if (organization instanceof Types.ObjectId) {
+      return organization.toString();
+    }
+    if (typeof (organization as any)._id === 'string') {
+      return (organization as any)._id;
+    }
+    if ((organization as any)._id instanceof Types.ObjectId) {
+      return ((organization as any)._id as Types.ObjectId).toString();
+    }
+    if (typeof (organization as any).toString === 'function') {
+      return (organization as any).toString();
+    }
+    return null;
+  }
+
+  private async assertConversationAccess(
+    conversationId: string,
+    organizationId: string,
+  ): Promise<ConversationDocument> {
+    const conversation = await this.conversationModel.findById(conversationId);
+
+    if (!conversation) {
+      throw new NotFoundException('Conversacion no encontrada');
+    }
+
+    const requestedOrg = this.toObjectId(organizationId);
+    const storedOrg = conversation.organization
+      ? this.toObjectId(conversation.organization as any)
+      : null;
+
+    if (!storedOrg) {
+      conversation.organization = requestedOrg as any;
+      await conversation.save();
+      return conversation;
+    }
+
+    if (storedOrg.toString() !== requestedOrg.toString()) {
+      throw new ForbiddenException(
+        'No tienes acceso a esta conversacion en otra organizacion',
+      );
+    }
+
+    return conversation;
+  }
+
   async createConversation(
     channel: ChannelType,
     contactId: string,
     organizationId: string,
     createdBy?: string,
   ) {
-    const contact = await this.contactModel.findOne({
-      _id: contactId,
-      organization: organizationId,
-    });
+    const contact = await this.contactModel.findById(contactId);
+    const organizationObjectId = this.toObjectId(organizationId);
 
     if (!contact) {
+      throw new NotFoundException('Contacto no encontrado');
+    }
+
+    const contactOrganization = contact.organization
+      ? this.toObjectId(contact.organization as any)
+      : null;
+
+    if (!contactOrganization) {
+      contact.organization = organizationObjectId as any;
+      await contact.save();
+    } else if (
+      contactOrganization.toString() !== organizationObjectId.toString()
+    ) {
       throw new NotFoundException(
-        'No se encontro el contacto dentro de tu organización',
+        'No se encontro el contacto dentro de tu organizacion',
       );
     }
 
@@ -63,7 +128,7 @@ export class ChatService {
     const conversation = await this.conversationModel.create({
       channel,
       contact: contact._id,
-      organization: this.toObjectId(organizationId),
+      organization: organizationObjectId,
       createdBy: createdById,
       participants: createdById ? [createdById] : [],
       messages: [],
@@ -83,8 +148,9 @@ export class ChatService {
   }
 
   async getConversationById(id: string, organizationId: string) {
+    await this.assertConversationAccess(id, organizationId);
     const conversation = await this.conversationModel
-      .findOne({ _id: id, organization: organizationId })
+      .findById(id)
       .populate('contact')
       .populate({ path: 'messages', populate: { path: 'sender' } });
 
@@ -100,62 +166,47 @@ export class ChatService {
     sender: AuthenticatedUser,
     conversationId: string,
     direction: 'inbound' | 'outbound',
+    organizationId?: string,
   ) {
-    const conversation = await this.conversationModel.findById(conversationId);
+    const derivedOrganizationId =
+      organizationId ?? this.resolveOrganizationId(sender?.organization);
 
-    if (!conversation) {
-      throw new NotFoundException('Conversacion no encontrada');
-    }
-
-    if (
-      sender &&
-      conversation.organization.toString() !==
-        sender.organization?._id?.toString() &&
-      conversation.organization.toString() !== sender.organization?.toString()
-    ) {
+    if (!derivedOrganizationId) {
       throw new ForbiddenException(
-        'No tienes acceso a esta conversacion en otra organizacion',
+        'No se pudo determinar la organizacion del mensaje',
       );
     }
 
-    const senderId =
+    const conversation = await this.assertConversationAccess(
+      conversationId,
+      derivedOrganizationId,
+    );
+
+    const senderObjectId =
       sender && sender._id ? this.toObjectId(sender._id) : undefined;
 
     const newMessage = await this.messageModel.create({
       content,
-      sender: senderId,
+      sender: senderObjectId,
       conversation: conversation._id,
       direction,
     });
 
-    if (senderId) {
-      const senderObjectId = this.toObjectId(senderId);
-      if (!Array.isArray(conversation.participants)) {
-        conversation.participants = [] as unknown as Types.ObjectId[];
-      }
-      const senderIdString = senderObjectId.toString();
-      const alreadyParticipant = (conversation.participants as Array<
-        Types.ObjectId | MongooseSchema.Types.ObjectId | string
-      >).some(
-        (participant) =>
-          this.toObjectId(participant as Types.ObjectId).toString() ===
-          senderIdString,
-      );
-      if (!alreadyParticipant) {
-        (conversation.participants as Types.ObjectId[]).push(senderObjectId);
-      }
+    const updateOperations: Record<string, unknown> = {
+      $push: { messages: newMessage._id },
+      $set: {
+        lastMessagePreview: content.slice(0, 140),
+        lastActivityAt: new Date(),
+      },
+    };
+
+    if (senderObjectId) {
+      updateOperations['$addToSet'] = { participants: senderObjectId };
     }
 
-    if (!Array.isArray(conversation.messages)) {
-      conversation.messages = [] as unknown as Types.ObjectId[];
-    }
-    (conversation.messages as Types.ObjectId[]).push(
-      this.toObjectId(newMessage._id as Types.ObjectId),
-    );
-    conversation.lastMessagePreview = content.slice(0, 140);
-    conversation.lastActivityAt = new Date();
-
-    await conversation.save();
+    await this.conversationModel
+      .updateOne({ _id: conversation._id }, updateOperations)
+      .exec();
 
     return newMessage.populate('sender');
   }
@@ -164,13 +215,7 @@ export class ChatService {
     conversationId: string,
     organizationId: string,
   ): Promise<MessageDocument[]> {
-    const conversation = await this.conversationModel
-      .findOne({ _id: conversationId, organization: organizationId })
-      .select('_id');
-
-    if (!conversation) {
-      throw new NotFoundException('Conversacion no encontrada');
-    }
+    await this.assertConversationAccess(conversationId, organizationId);
 
     return this.messageModel
       .find({ conversation: conversationId })
@@ -204,3 +249,4 @@ export class ChatService {
       .lean();
   }
 }
+

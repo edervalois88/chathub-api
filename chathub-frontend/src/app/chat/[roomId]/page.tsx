@@ -1,18 +1,19 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, use as usePromise } from 'react';
 import { useRouter } from 'next/navigation';
 import Sidebar from '@/components/Sidebar';
 import ChatRoom from '@/components/ChatRoom';
 import { useAuth } from '@/context/AuthContext';
 
 interface PageProps {
-  params: {
+  params: Promise<{
     roomId: string;
-  };
+  }>;
 }
 
 export default function ChatRoomPage({ params }: PageProps) {
+  const { roomId } = usePromise(params);
   const { token } = useAuth();
   const router = useRouter();
   const [selectedRoomId, setSelectedRoomId] = useState<string | null>(null);
@@ -22,12 +23,12 @@ export default function ChatRoomPage({ params }: PageProps) {
       router.replace('/login');
       return;
     }
-    setSelectedRoomId(params.roomId);
-  }, [token, router, params.roomId]);
-
-  const handleSelectConversation = (roomId: string) => {
     setSelectedRoomId(roomId);
-    router.replace(`/chat/${roomId}`);
+  }, [token, router, roomId]);
+
+  const handleSelectConversation = (newRoomId: string) => {
+    setSelectedRoomId(newRoomId);
+    router.replace(`/chat/${newRoomId}`);
   };
 
   if (!token) {
@@ -50,4 +51,3 @@ export default function ChatRoomPage({ params }: PageProps) {
     </div>
   );
 }
-

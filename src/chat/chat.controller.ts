@@ -64,12 +64,16 @@ export class ChatController {
     @Body() body: { content: string },
     @Req() req,
   ) {
+    const organizationId =
+      req.user.organization?._id ?? req.user.organization?.toString();
+
     // Assuming outbound messages are sent by authenticated users (agents)
     return this.chatService.createMessage(
       body.content,
       req.user,
       conversationId,
       'outbound',
+      organizationId,
     );
   }
 

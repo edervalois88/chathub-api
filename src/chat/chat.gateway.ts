@@ -19,6 +19,31 @@ type AuthenticatedSocket = WebSocket & {
 @WebSocketGateway({ cors: { origin: '*' } })
 export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect {
 
+  private normalizeOrganizationId(source: unknown): string | undefined {
+    if (!source) {
+      return undefined;
+    }
+    if (typeof source === 'string') {
+      return source;
+    }
+    if (typeof source === 'object') {
+      const candidate: any = source;
+      if (typeof candidate._id === 'string') {
+        return candidate._id;
+      }
+      if (candidate._id && typeof candidate._id.toString === 'function') {
+        return candidate._id.toString();
+      }
+      if (typeof candidate.id === 'string') {
+        return candidate.id;
+      }
+      if (typeof candidate.toString === 'function') {
+        return candidate.toString();
+      }
+    }
+    return undefined;
+  }
+
   @WebSocketServer()
   server: Server;
 
@@ -66,8 +91,9 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
     conversationId: string,
   ): Promise<void> {
     try {
-      const organizationId =
-        client.user?.organization?._id ?? client.user?.organization;
+      const organizationId = this.normalizeOrganizationId(
+        client.user?.organization,
+      );
       if (!organizationId) {
         throw new Error('Organizacion no detectada en el contexto del usuario');
       }
@@ -108,6 +134,15 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
     const conversationId = client.conversationId;
 
     if (user && conversationId) {
+      const organizationId = this.normalizeOrganizationId(user.organization);
+
+      if (!organizationId) {
+        this.logger.error(
+          'No se encontro la organizacion del usuario para enviar el mensaje',
+        );
+        return;
+      }
+
       const content =
         typeof payload === 'string'
           ? payload
@@ -122,6 +157,7 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
         user,
         conversationId,
         'outbound',
+        organizationId,
       );
 
       const message = {
